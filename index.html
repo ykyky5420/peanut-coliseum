@@ -147,6 +147,7 @@
   <div id="mobile-jump-btn">JUMP</div>
 </div>
 
+<button id="btn-toggle-chat" onclick="toggleChat()">💬 채팅 열기</button>
 <div id="chat-wrapper">
   <div id="chat-messages"></div>
   <input type="text" id="chat-input" placeholder="Enter를 눌러 채팅 입력..." autocomplete="off">
@@ -576,7 +577,19 @@ function playSound(type) {
 function initMobileControls() {
     let joyZone = document.getElementById('joystick-zone');
     let joyKnob = document.getElementById('joystick-knob');
+    let isTacticalView = false; // ✨ 전술 모드(숲을 보는 시야) 상태
     let jumpBtn = document.getElementById('mobile-jump-btn');
+    let zoomBtn = document.getElementById('mobile-zoom-btn');
+    if(zoomBtn) {
+        zoomBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isTacticalView = !isTacticalView;
+            if(typeof playSound === 'function') playSound('build'); // 부드러운 소리로 전환을 알립니다.
+        }, {passive: false});
+        zoomBtn.addEventListener('mousedown', (e) => { // PC에서 모바일 뷰로 테스트할 때를 위한 배려
+            isTacticalView = !isTacticalView;
+        });
+    }
     if(!joyZone || !joyKnob || !jumpBtn) return;
     
     // ✨ 손길(터치)이 닿는 작은 세계임을 감지하여 조작반을 깨웁니다.
@@ -584,22 +597,42 @@ function initMobileControls() {
         document.getElementById('mobile-controls').style.display = 'block';
     }
     
+    let joyPointerId = null;
+    
     joyZone.addEventListener('pointerdown', (e) => {
+        if (joyPointerId !== null) return; // ✨ 이미 조이스틱을 쥐고 있다면 다른 터치를 무시합니다.
+        joyPointerId = e.pointerId;
         virtualJoy.active = true;
         let rect = joyZone.getBoundingClientRect();
         virtualJoy.originX = rect.left + rect.width/2;
         virtualJoy.originY = rect.top + rect.height/2;
         updateJoystick(e.clientX, e.clientY, joyKnob);
+        e.preventDefault();
     });
+    
     window.addEventListener('pointermove', (e) => {
-        if(virtualJoy.active) updateJoystick(e.clientX, e.clientY, joyKnob);
-    });
-    window.addEventListener('pointerup', (e) => {
-        virtualJoy.active = false; virtualJoy.dx = 0; virtualJoy.dy = 0;
-        joyKnob.style.transform = `translate(0px, 0px)`;
-    });
-    jumpBtn.addEventListener('pointerdown', () => keys.Space = true);
-    jumpBtn.addEventListener('pointerup', () => keys.Space = false);
+        // ✨ 오직 조이스틱을 처음 터치한 그 손가락의 움직임만 추적합니다.
+        if(virtualJoy.active && e.pointerId === joyPointerId) {
+            updateJoystick(e.clientX, e.clientY, joyKnob);
+            e.preventDefault();
+        }
+    }, {passive: false});
+    
+    const resetJoy = (e) => {
+        if(e.pointerId === joyPointerId) {
+            virtualJoy.active = false; virtualJoy.dx = 0; virtualJoy.dy = 0;
+            joyKnob.style.transform = `translate(0px, 0px)`;
+            joyPointerId = null;
+        }
+    };
+    window.addEventListener('pointerup', resetJoy);
+    window.addEventListener('pointercancel', resetJoy);
+
+    // ✨ 점프 버튼을 누를 때 엉키지 않도록 보호막(stopPropagation)을 칩니다.
+    jumpBtn.addEventListener('pointerdown', (e) => { keys.Space = true; e.preventDefault(); e.stopPropagation(); });
+    jumpBtn.addEventListener('pointerup', (e) => { keys.Space = false; e.preventDefault(); e.stopPropagation(); });
+    jumpBtn.addEventListener('pointerleave', (e) => { keys.Space = false; });
+    jumpBtn.addEventListener('pointercancel', (e) => { keys.Space = false; });
 }
 
 // ✨ 키보드를 통한 우주와의 교감 (이벤트 리스너)
@@ -1524,13 +1557,27 @@ class Pad {
 
 function mousePressed(event) {
   if (gameState === 'SETUP' || isPaused || !players || players.find(p=>p.isLocal)?.isDead) return;
+  
+  let tClass = event && event.target && event.target.className ? event.target.className : '';
+  let tId = event && event.target && event.target.id ? event.target.id : '';
+  
   if (event && event.target && event.target.closest('.action-menu')) return;
-  if (event && event.target && (event.target.id === 'btn-pause' || event.target.className === 'upg-btn' || event.target.className === 'revive-btn' || event.target.id === 'btn-fs')) return;
+  if (tId === 'btn-pause' || (typeof tClass === 'string' && (tClass.includes('upg-btn') || tClass.includes('revive-btn'))) || tId === 'btn-fs' || tId === 'btn-toggle-chat') return;
   if (event && event.target && event.target.closest('#dev-mode-panel')) return;
   if (event && event.target && event.target.closest('#chat-wrapper')) return;
   if (event && event.target && event.target.closest('#mobile-controls')) return;
 
-  let mx = (mouseX - width/2) / camScale; let my = (mouseY - height/2) / camScale;
+  // ✨ 다중 터치 섭리: 조이스틱을 쥐고 있더라도, 가장 최근에 화면에 닿은 손가락의 위치를 찾아냅니다.
+  let cx = mouseX; let cy = mouseY;
+  if (event.type === 'touchstart' && event.changedTouches && event.changedTouches.length > 0) {
+      cx = event.changedTouches[0].clientX;
+      cy = event.changedTouches[0].clientY;
+  } else if (event.clientX !== undefined) {
+      cx = event.clientX;
+      cy = event.clientY;
+  }
+
+  let mx = (cx - width/2) / camScale; let my = (cy - height/2) / camScale;
   let dSq = mx*mx + my*my; let a = atan2(my, mx); if (a < 0) a += TWO_PI;
   
   let clickedSlot = false; document.getElementById('build-menu').style.display = 'none'; document.getElementById('upgrade-menu').style.display = 'none';
@@ -1541,11 +1588,11 @@ function mousePressed(event) {
       let baseStart = slot.indexInRing * anglePerSlot; let baseEnd = baseStart + anglePerSlot; let rMin = slot.radius; let rMax = slot.radius + slot.width;
       if (dSq >= rMin*rMin && dSq <= rMax*rMax && unrotatedA >= baseStart && unrotatedA <= baseEnd) {
         selectedSlot = slot; 
-        if (!slot.hasTurret) { let menu = document.getElementById('build-menu'); menu.style.left = mouseX + 'px'; menu.style.top = mouseY + 'px'; menu.style.display = 'block'; } 
+        if (!slot.hasTurret) { let menu = document.getElementById('build-menu'); menu.style.left = cx + 'px'; menu.style.top = cy + 'px'; menu.style.display = 'block'; } 
         else if (slot.owner === players.find(p=>p.isLocal)) {
           let menu = document.getElementById('upgrade-menu'); let btnUpgrade = document.getElementById('btn-upgrade');
           if (slot.level >= 5) { btnUpgrade.innerText = _t('maxLv'); } else { let cost = [0, 20, 40, 80, 150][slot.level]; btnUpgrade.innerText = `${_t('upg')} (${cost}G)`; }
-          menu.style.left = mouseX + 'px'; menu.style.top = mouseY + 'px'; menu.style.display = 'block'; 
+          menu.style.left = cx + 'px'; menu.style.top = cy + 'px'; menu.style.display = 'block'; 
         }
         clickedSlot = true; break;
       }
