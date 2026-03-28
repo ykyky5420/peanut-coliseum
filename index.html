@@ -1829,7 +1829,6 @@ class Player {
             if (distSq > 10000) { this.vX = this.x; this.vY = this.y; }
             else { this.vX = lerp(this.vX, this.x, 0.35); this.vY = lerp(this.vY, this.y, 0.35); }
         }
-    } else { this.vX = this.x; this.vY = this.y; }
     
     if (this.isDead) return;
     if (this.invincibility > 0 && Math.floor(frameCount / 5) % 2 === 0 && this.babylonTimer <= 0) return;
