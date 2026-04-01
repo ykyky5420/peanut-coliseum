@@ -1056,7 +1056,11 @@ function setupSocket() {
                         if (!p.isDead && sp.isDead) document.getElementById('dead-screen').style.display = 'flex';
                         if (p.isDead && !sp.isDead) { document.getElementById('dead-screen').style.display = 'none'; let br = document.getElementById('btn-show-revive'); if(br) br.style.display = 'none'; } let br = document.getElementById('btn-show-revive'); if(br) br.style.display = 'none';
                     }
-            if (!p.isLocal) { p.targetX = sp.x; p.targetY = sp.y; }
+            if (!p.isLocal) { 
+                        // ✨ 동료의 보폭(속도)을 계산하여 찰나의 빈 시간 동안 스스로 걸어가도록 예측합니다.
+                        if (p.targetX !== undefined) { p.vx = (sp.x - p.targetX) / 2; p.vy = (sp.y - p.targetY) / 2; }
+                        p.targetX = sp.x; p.targetY = sp.y; 
+                    }
             else {
                 /* ✨ 영혼의 자유: 참여자의 움직임을 온전히 믿습니다. (부활 시에만 아주 예외적으로 교정) */
                 let diffSq = (p.x - sp.x)*(p.x - sp.x) + (p.y - sp.y)*(p.y - sp.y);
@@ -1087,8 +1091,7 @@ function setupSocket() {
                     if (existing) {
                         existing.vx = sm.vx; existing.vy = sm.vy; existing.aimAngle = sm.aimAngle;
                         // ✨ 과거의 편지 무시: 50px 이내의 자연스러운 지연은 교정하지 않고 60프레임으로 흐르게 둡니다.
-                        let diffSq = (existing.x - sm.x)*(existing.x - sm.x) + (existing.y - sm.y)*(existing.y - sm.y);
-                        if (diffSq > 2500) { existing.targetX = sm.x; existing.targetY = sm.y; }
+                        existing.targetX = sm.x; existing.targetY = sm.y; // ✨ 오차를 방치하지 않고 즉시 진실된 좌표에 예측의 닻을 내립니다.
                         existing.hp = sm.hp; existing.burnTimer = sm.burn;
                         existing.freezeTimer = sm.freeze; existing.shockTimer = sm.shock; existing.isCharging = sm.isCharging; existing.attackState = sm.attackState; // ✨ 잃어버린 긴장감(경고) 복구
                     } else {
@@ -1106,7 +1109,7 @@ function setupSocket() {
             if (!isHost && state.projectiles) {
                 state.projectiles.forEach(sp => {
                     let p = projectiles.find(ex => (ex.uniqueId || ex.id) === sp.id);
-                    if (p) { p.vx = sp.vx; p.vy = sp.vy; let diffSq = (p.x - sp.x)*(p.x - sp.x) + (p.y - sp.y)*(p.y - sp.y); if (diffSq > 2500) { p.targetX = sp.x; p.targetY = sp.y; } }
+                    if (p) { p.vx = sp.vx; p.vy = sp.vy; p.targetX = sp.x; p.targetY = sp.y; // ✨ 오차를 방치하지 않고 즉시 진실된 좌표에 예측의 닻을 내립니다. }
                     else { sp.uniqueId = sp.id; sp.targetX = sp.x; sp.targetY = sp.y; sp.vx = sp.vx; sp.vy = sp.vy; sp.display = Projectile.prototype.display; projectiles.push(sp); }
                 });
                 let projIds = new Set(state.projectiles.map(sp => sp.id));
@@ -1121,7 +1124,7 @@ function setupSocket() {
             if (!isHost && state.enemyLasers) {
                 state.enemyLasers.forEach(sl => {
                     let l = enemyLasers.find(ex => (ex.uniqueId || ex.id) === sl.id);
-                    if (l) { l.vx = sl.vx; l.vy = sl.vy; let diffSq = (l.x - sl.x)*(l.x - sl.x) + (l.y - sl.y)*(l.y - sl.y); if (diffSq > 2500) { l.targetX = sl.x; l.targetY = sl.y; } }
+                    if (l) { l.vx = sl.vx; l.vy = sl.vy; l.targetX = sl.x; l.targetY = sl.y; // ✨ 오차를 방치하지 않고 즉시 진실된 좌표에 예측의 닻을 내립니다. }
                     else { sl.uniqueId = sl.id; sl.targetX = sl.x; sl.targetY = sl.y; sl.vx = sl.vx; sl.vy = sl.vy; sl.display = EnemyLaser.prototype.display; enemyLasers.push(sl); }
                 });
                 let laserIds = new Set(state.enemyLasers.map(sl => sl.id));
@@ -1131,7 +1134,7 @@ function setupSocket() {
             if (!isHost && state.bossMissiles) {
                 state.bossMissiles.forEach(sm => {
                     let m = bossMissiles.find(ex => (ex.uniqueId || ex.id) === sm.id);
-                    if (m) { m.vx = sm.vx; m.vy = sm.vy; let diffSq = (m.x - sm.x)*(m.x - sm.x) + (m.y - sm.y)*(m.y - sm.y); if (diffSq > 2500) { m.targetX = sm.x; m.targetY = sm.y; } }
+                    if (m) { m.vx = sm.vx; m.vy = sm.vy; m.targetX = sm.x; m.targetY = sm.y; // ✨ 오차를 방치하지 않고 즉시 진실된 좌표에 예측의 닻을 내립니다. }
                     else { sm.uniqueId = sm.id; sm.targetX = sm.x; sm.targetY = sm.y; sm.vx = sm.vx; sm.vy = sm.vy; sm.display = BossMissile.prototype.display; bossMissiles.push(sm); }
                 });
                 let missileIds = new Set(state.bossMissiles.map(sm => sm.id));
@@ -2108,7 +2111,10 @@ class Player {
     
 
 
-    if (!isHost && !this.isLocal && this.targetX !== undefined) { this.x = lerp(this.x, this.targetX, 0.45); this.y = lerp(this.y, this.targetY, 0.45); } // ✨ 동료의 움직임에 탄력을 불어넣어 부드러움을 극대화합니다.
+    if (!isHost && !this.isLocal && this.targetX !== undefined) { 
+        this.targetX += this.vx || 0; this.targetY += this.vy || 0; // ✨ 예측된 속도로 시간의 빈틈을 부드럽게 채웁니다.
+        this.x = lerp(this.x, this.targetX, 0.45); this.y = lerp(this.y, this.targetY, 0.45); 
+    }
     if (this.isDead) return;
     if (this.invincibility > 0 && Math.floor(frameCount / 5) % 2 === 0 && this.babylonTimer <= 0) return;
    
